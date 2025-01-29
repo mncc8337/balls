@@ -41,7 +41,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     bodies.push_back(body);
 
     body.rect.x = 200; body.rect.y = 200;
-    body.mass = 1e17;
+    body.mass = 1e16;
     body.velocity = {0, -2, 0};
     bodies.push_back(body);
 
@@ -72,7 +72,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
     SDL_SetRenderDrawColor(renderer, 23, 23, 200, SDL_ALPHA_OPAQUE);
 
     for(unsigned i = 0; i < bodies.size(); i++) {
-        for(unsigned j = 0; j < bodies.size(); j++) {
+        for(unsigned j = i + 1; j < bodies.size(); j++) {
             if(i == j) continue;
 
             Vec3 p1 = {bodies[i].rect.x, bodies[i].rect.y, 0};
@@ -86,8 +86,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                 g_magnitude = 1e16;
             }
 
-            // this force will be appled 2 times so we need to divide it by 2
-            Vec3 gforce = dir.normalize() * g_magnitude / 2;
+            Vec3 gforce = dir.normalize() * g_magnitude;
 
             bodies[i].apply_force(-gforce, delta_ticks / 1000.0);
             bodies[j].apply_force( gforce, delta_ticks / 1000.0);
