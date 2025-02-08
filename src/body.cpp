@@ -1,11 +1,11 @@
-#include <grav/constants.h>
-#include <grav/body.h>
+#include <constants.h>
+#include <body.h>
 
 void Body::apply_force(Vec3 force, double duration) {
     if(mass == INFINITY) return;
 
     Vec3 accel = force / mass;
-    velocity += accel * duration / METERS_PER_PIXEL;
+    velocity += accel * duration;
 }
 
 void Body::inertia(double delta_time) {

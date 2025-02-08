@@ -1,2 +1,2 @@
-# grav
-simple gravitational force demo on SDL3
+# balls
+some balls simulation stuff, in SDL3

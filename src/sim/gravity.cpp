@@ -5,8 +5,8 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
-#include <grav/body.h>
-#include <grav/constants.h>
+#include <body.h>
+#include <constants.h>
 #include <vec3.h>
 
 const int WIDTH = 640;
@@ -20,13 +20,16 @@ static int elapsed_ticks = 0;
 
 static std::vector<Body> bodies;
 
+const double METERS_PER_PIXEL = 0.4e4;
+const double TIME_SCALE = 20;
+
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     if(!SDL_Init(SDL_INIT_VIDEO)) {
         SDL_Log("ERR::VIDEO: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
 
-    if(!SDL_CreateWindowAndRenderer("grav", WIDTH, HEIGHT, 0, &window, &renderer)) {
+    if(!SDL_CreateWindowAndRenderer("gravity", WIDTH, HEIGHT, 0, &window, &renderer)) {
         SDL_Log("ERR::WINDOW: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
@@ -43,35 +46,39 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
         return SDL_APP_FAILURE;
     }
 
-    Body body;
+    Vec3 origin = Vec3(WIDTH/2.0, HEIGHT/2.0, 0);
 
-    body.position = {WIDTH/2.0, HEIGHT/2.0, 0};
-    body.radius = 20;
-    body.color = {0.2, 0.2, 1};
-    body.velocity = {0, 0, 0};
-    body.mass = 1e33;
-    bodies.push_back(body);
+    Body earth;
+    earth.position = origin;
+    earth.mass = 5.972168e24;
+    earth.color = {0.4, 0.8, 0.5};
+    earth.radius = 25;
+    bodies.push_back(earth);
 
-    body.position = {50, 450, 0};
-    body.radius = 13;
-    body.color = {1, 0.2, 0.2};
-    body.velocity = {12, 0, 0};
-    body.mass = 1e24;
-    bodies.push_back(body);
+    Body moon;
+    moon.position = (origin * METERS_PER_PIXEL + Vec3(384.4e3, 0, 0)) / METERS_PER_PIXEL;
+    moon.velocity = {0, -6, 0};
+    moon.mass = 7.34767309e22;
+    moon.color = {0.5, 0.5, 0.7};
+    moon.radius = earth.radius / 3.671;
+    bodies.push_back(moon);
 
-    body.position = {100, 330, 0};
-    body.radius = 18;
-    body.color = {0.7, 0.8, 0.2};
-    body.velocity = {12, 5, 0};
-    body.mass = 1e30;
-    bodies.push_back(body);
+    Body asteroid1;
+    asteroid1.position = origin + Vec3(150, 150, 0);
+    asteroid1.velocity = {1, -4, 0};
+    asteroid1.mass = 123.565e14;
+    asteroid1.color = {0.4, 0.3, 0.3};
+    asteroid1.radius = 5;
+    bodies.push_back(asteroid1);
 
-    body.position = {130, 360, 0};
-    body.radius = 5;
-    body.color = {0.2, 1, 0.2};
-    body.velocity = {12, 10, 0};
-    body.mass = 1e6;
-    bodies.push_back(body);
+    Body asteroid2;
+    asteroid2.position = origin - Vec3(150, 150, 0);
+    asteroid2.velocity = {-1, 3, 0};
+    asteroid2.mass = 123.565e10;
+    asteroid2.color = {0.5, 0.5, 0.5};
+    asteroid2.radius = 3;
+    bodies.push_back(asteroid2);
+
 
     return SDL_APP_CONTINUE;
 }
@@ -89,20 +96,17 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
     int delta_ticks = _ticks - elapsed_ticks;
     elapsed_ticks = _ticks;
 
-    const double time_scale = 1;
-    const double delta_time = delta_ticks / 1e3 * time_scale;
+    const double delta_time = delta_ticks / 1e3 * TIME_SCALE;
+    const double mpp_cube = METERS_PER_PIXEL * METERS_PER_PIXEL * METERS_PER_PIXEL;
 
     for(unsigned i = 0; i < bodies.size(); i++) {
         for(unsigned j = i + 1; j < bodies.size(); j++) {
-            Vec3 p1 = bodies[i].position * METERS_PER_PIXEL;
-            Vec3 p2 = bodies[j].position * METERS_PER_PIXEL;
+            Vec3 p1 = bodies[i].position;
+            Vec3 p2 = bodies[j].position;
             Vec3 dir = p1 - p2;
-            SDL_Log("INF::GAME: len^2 %f", dir.squared_length());
 
             double gmag = (G * bodies[i].mass * bodies[j].mass) / dir.squared_length();
-            SDL_Log("INF::GAME: mag %f", gmag);
-
-            Vec3 gforce = dir.normalize() * gmag;
+            Vec3 gforce = dir.normalize() * gmag / mpp_cube;
 
             bodies[i].apply_force(-gforce, delta_time);
             bodies[j].apply_force(gforce, delta_time);
@@ -110,7 +114,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
     }
 
     for(unsigned i = 0; i < bodies.size(); i++) {
-        bodies[i].inertia(delta_ticks / 1e3 * time_scale);
+        bodies[i].inertia(delta_ticks / 1e3 * TIME_SCALE);
     }
 
     for(unsigned i = 0; i < bodies.size(); i++) {
@@ -125,13 +129,14 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         bodies[i].draw(renderer);
     }
     for(unsigned i = 0; i < bodies.size(); i++) {
+        if(bodies[i].radius > 3000) continue;
         bodies[i].draw(renderer);
-        Vec3 d = bodies[i].velocity.normalize() * 50 + bodies[i].position;
+        Vec3 d = bodies[i].velocity.normalize() * 10 + bodies[i].position;
         SDL_SetRenderDrawColor(renderer, COLOR(bodies[i].color), SDL_ALPHA_OPAQUE);
         SDL_RenderLine(renderer, bodies[i].position.x, bodies[i].position.y, d.x, d.y);
     }
 
-    // draw orbit to texture
+    // draw orbit
     SDL_SetRenderTarget(renderer, orbit_texture);
     for(unsigned i = 0; i < bodies.size(); i++) {
         SDL_SetRenderDrawColor(renderer, COLOR(bodies[i].color), SDL_ALPHA_OPAQUE);

@@ -1,33 +1,32 @@
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -Iinclude
+CXXFLAGS = -Wall -Wextra -std=c++17 -Iinclude
 LDFLAGS = -lSDL3
+SRC = $(wildcard src/*.cpp)
+HEADERS = $(wildcard include/*.h)
+SIM_SRC = $(wildcard src/sim/*.cpp)
+OBJ = $(patsubst src/%.cpp, $(TARGET_DIR)/%.o, $(SRC))
+SIM_OBJ = $(patsubst src/sim/%.cpp, $(TARGET_DIR)/%.o, $(SIM_SRC))
+DEP = $(OBJ:.o=.d) $(SIM_OBJ:.o=.d)
+TARGET_DIR = bin
+TARGETS = $(patsubst src/sim/%.cpp, $(TARGET_DIR)/%, $(SIM_SRC))
 
-SRC_DIR = .
-OBJ_DIR = bin/obj
-BIN_DIR = bin
+all: check_dir $(TARGETS)
 
-SRCS = $(shell find $(SRC_DIR) -name '*.cpp')
+check_dir:
+	@mkdir -p $(TARGET_DIR)
 
-OBJS = $(patsubst $(SRC_DIR)/%.cpp, $(OBJ_DIR)/%.o, $(SRCS))
+$(TARGET_DIR)/%: $(TARGET_DIR)/%.o $(OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
-TARGET = $(BIN_DIR)/main
+$(TARGET_DIR)/%.o: src/%.cpp $(HEADERS)
+	$(CXX) $(CXXFLAGS) -MMD -c $< -o $@
 
-all: $(TARGET)
+$(TARGET_DIR)/%.o: src/sim/%.cpp $(HEADERS)
+	$(CXX) $(CXXFLAGS) -MMD -c $< -o $@
 
-$(OBJ_DIR) $(BIN_DIR):
-	@mkdir -p $@
-
-$(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp | $(OBJ_DIR)
-	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) -c $< -o $@
-
-$(TARGET): $(OBJS) | $(BIN_DIR)
-	$(CXX) $(OBJS) -o $(TARGET) $(LDFLAGS)
-
-run: $(TARGET)
-	./$(TARGET)
+-include $(DEP)
 
 clean:
-	rm -rf $(OBJ_DIR) $(BIN_DIR)
+	rm -rf $(TARGET_DIR)
 
-.PHONY: all run clean
+.PHONY: all clean check_dir
