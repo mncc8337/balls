@@ -11,11 +11,15 @@
 const int WIDTH = 640;
 const int HEIGHT = 480;
 
-const double METERS_PER_PIXEL = 0.25e7;
-const double TIME_SCALE = 500000;
+const double METERS_PER_PIXEL = 1e-2;
+const double TIME_SCALE = 1e-6;
+
+// charge is stored using the y component of Body.color
+// cursed, but it works
+#define charge color.y
 
 const double RESTITUTION = 0.0f;
-const double G = 6.6743e-11;
+const double k = 8.99e9;
 
 static SDL_Window* window = NULL;
 static SDL_Renderer* renderer = NULL;
@@ -25,15 +29,13 @@ static int elapsed_ticks = 0;
 
 static std::vector<Body> bodies;
 
-Vec3 origin = Vec3(WIDTH/2.0, HEIGHT/2.0, 0) * METERS_PER_PIXEL;
-
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     if(!SDL_Init(SDL_INIT_VIDEO)) {
         SDL_Log("ERR::VIDEO: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
 
-    if(!SDL_CreateWindowAndRenderer("gravity", WIDTH, HEIGHT, 0, &window, &renderer)) {
+    if(!SDL_CreateWindowAndRenderer("coulomb", WIDTH, HEIGHT, 0, &window, &renderer)) {
         SDL_Log("ERR::WINDOW: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
@@ -50,20 +52,28 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
         return SDL_APP_FAILURE;
     }
 
-    Body earth;
-    earth.position = {0, 0, 0};
-    earth.mass = 5.972168e24;
-    earth.color = {0.4, 0.8, 0.5};
-    earth.radius = 6378e3;
-    bodies.push_back(earth);
+    Vec3 origin = Vec3(WIDTH/2.0, HEIGHT/2.0, 0)  * METERS_PER_PIXEL;
 
-    Body moon;
-    moon.position = {405000e3, 0, 0};
-    moon.velocity = Vec3(-0.0001, -0.0004, 0) * METERS_PER_PIXEL;
-    moon.mass = 7.34767309e22;
-    moon.color = {0.5, 0.5, 0.7};
-    moon.radius = 1737.4e3;
-    bodies.push_back(moon);
+    Body part1;
+    part1.position = origin + Vec3(-1, 0, 0);
+    part1.mass = 0.01;
+    part1.charge = -1;
+    part1.radius = 0.1;
+    bodies.push_back(part1);
+
+    Body part2;
+    part2.position = origin + Vec3(1, 0, 0);
+    part2.mass = 0.01;
+    part2.charge = 1;
+    part2.radius = 0.1;
+    bodies.push_back(part2);
+
+    for(unsigned i = 0; i < bodies.size(); i++) {
+        if(bodies[i].charge < 0)
+            bodies[i].color.z = 1;
+        else if(bodies[i].charge > 0)
+            bodies[i].color.x = 1;
+    }
 
     return SDL_APP_CONTINUE;
 }
@@ -89,11 +99,17 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
             Vec3 p2 = bodies[j].position;
             Vec3 dir = p1 - p2;
 
-            double gmag = (G * bodies[i].mass * bodies[j].mass) / dir.squared_length();
-            Vec3 gforce = dir.normalize() * gmag;
+            double cmag = abs(k * bodies[i].charge * bodies[j].charge) / dir.squared_length();
+            Vec3 cforce = dir.normalize() * cmag;
 
-            bodies[i].apply_force(-gforce, delta_time);
-            bodies[j].apply_force(gforce, delta_time);
+            if(bodies[i].charge * bodies[j].charge < 0) {
+                bodies[i].apply_force(-cforce, delta_time);
+                bodies[j].apply_force(cforce, delta_time);
+            }
+            else {
+                bodies[i].apply_force(cforce, delta_time);
+                bodies[j].apply_force(-cforce, delta_time);
+            }
         }
     }
 
@@ -109,22 +125,31 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 
     SDL_RenderTexture(renderer, orbit_texture, NULL, NULL);
 
-    Vec3 offset = origin;
-
     for(unsigned i = 0; i < bodies.size(); i++) {
-        bodies[i].draw(renderer, offset, METERS_PER_PIXEL);
-        Vec3 position_px = (bodies[i].position + offset) / METERS_PER_PIXEL;
+        if(bodies[i].radius > 3000) continue;
+        double chr = bodies[i].color.y;
+        bodies[i].color.y = 0;
+
+        bodies[i].draw(renderer, {0, 0, 0}, METERS_PER_PIXEL);
+        Vec3 position_px = bodies[i].position / METERS_PER_PIXEL;
         Vec3 d = bodies[i].velocity.normalize() * 10 + position_px;
         SDL_SetRenderDrawColor(renderer, COLOR(bodies[i].color), SDL_ALPHA_OPAQUE);
         SDL_RenderLine(renderer, position_px.x, position_px.y, d.x, d.y);
+
+        bodies[i].color.y = chr;
     }
 
     // draw orbit
     SDL_SetRenderTarget(renderer, orbit_texture);
     for(unsigned i = 0; i < bodies.size(); i++) {
-        Vec3 position_px = (bodies[i].position + offset) / METERS_PER_PIXEL;
+        double chr = bodies[i].color.y;
+        bodies[i].color.y = 0;
+
+        Vec3 position_px = bodies[i].position / METERS_PER_PIXEL;
         SDL_SetRenderDrawColor(renderer, COLOR(bodies[i].color), SDL_ALPHA_OPAQUE);
         SDL_RenderPoint(renderer, position_px.x, position_px.y);
+
+        bodies[i].color.y = chr;
     }
     SDL_SetRenderTarget(renderer, NULL);
 
